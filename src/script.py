@@ -1,7 +1,17 @@
 import json
 import numpy as np
 import pandas as pd
+import os
 import matplotlib.pyplot as plt
+
+fig_dir = "../figures/"
+
+def func(pct, allvals):
+    absolute = int(pct/100.*np.sum(allvals))
+    return "{:.1f}%\n({:d} messages)".format(pct, absolute)
+
+if not os.path.isdir(fig_dir):
+    os.mkdir(fig_dir)
 
 with open('../data/result.json', encoding='utf8') as fp:
     data = json.load(fp)
@@ -9,79 +19,92 @@ with open('../data/result.json', encoding='utf8') as fp:
 personal_information = data['personal_information']
 user_name = personal_information['first_name'] + ' ' + personal_information['last_name']
 
-chat_names = {}
-for i,l in enumerate(data['chats']['list']):
-    if 'name' in l.keys():
-        chat_names[l['name']] = i
+dfs = [] # List containing dataframe of all chats
 
-# TODO: loop over chats
-chat = data['chats']['list'][1]
-n_msg = len(chat['messages'])
+# Loop over chats
+for chat in data['chats']['list']:
+    
+    # saved_messages chat is ignored
+    if chat['type'] == 'saved_messages':
+        continue
+    
+    chat_name = chat['name']
+    print("Chat: {}".format(chat_name))
+    
+    n_msg = len(chat['messages'])
+    
+    # Get infos to put in the dataframe
+    msg_date = []
+    msg_sender = []
+    msg_txt = []
+    for msg in chat['messages']:
+        if msg['type'] == 'message':
+            msg_date.append(msg['date'])
+            msg_sender.append(msg['from'])
+            if msg['text'] is dict:
+                print("It happens")
+                msg_txt.append(msg['text']['text'])
+            else:
+                msg_txt.append(msg['text'])
 
-msg_sender = []
-for msg in chat['messages']:
-    if 'from' in msg.keys():
-        msg_sender.append(msg['from'])
+    # Creating the dataframe
+    index = pd.to_datetime(msg_date,)
+    df = pd.DataFrame({'from':msg_sender, 'text':msg_txt}, index=index)
+    df['count'] = 1 # Used to count number of messages (I couldn't find something nicer)
+    dfs.append(df)
 
-participants = list(set(msg_sender))
-participants.remove(user_name)
+    # Number of messages by participant
+    count = df['from'].value_counts()
+    
+    # Computing counts
+    hourly_count = df['count'].resample('H').count()
+    daily_count = df['count'].resample('D').count()
+    weekly_count = df['count'].resample('W').count()
+    monthly_count = df['count'].resample('M').count()
 
-n_msg_user = 0
-n_msg_contact = 0
-for msg in chat['messages']:
-    if 'from' in msg.keys():
-        if msg['from'] == user_name:
-            n_msg_user = n_msg_user + 1
-        elif msg['from'] == participants[0]:
-            n_msg_contact = n_msg_contact + 1
-list_n_msg = [n_msg_user, n_msg_contact]
-persons = [user_name] + participants
+    if not os.path.isdir(os.path.join(fig_dir, chat_name)):
+        os.mkdir(os.path.join(fig_dir, chat_name))
+    if not os.path.isdir(os.path.join(fig_dir, chat_name, "pdf")):
+        os.mkdir(os.path.join(fig_dir, chat_name, "pdf"))
+    if not os.path.isdir(os.path.join(fig_dir, chat_name, "png")):
+        os.mkdir(os.path.join(fig_dir, chat_name, "png"))
+    
+    # Plotting pie chart
+    fig, ax = plt.subplots()
+    count.plot.pie(shadow=False,
+                   labels=count.index,
+                   autopct=lambda pct: func(pct, count),
+                   textprops=dict(color="w"))
 
-print('User: {}'.format(n_msg_user))
-print('Contact: {}'.format(n_msg_contact))
-print('Total: {}'.format(n_msg))
-print('Ratios: {}, {}'.format(n_msg_user/n_msg, n_msg_contact/n_msg))
-
-print(chat['messages'][1]['text'])
-
-dates = []
-texts = []
-for msg in chat['messages']:
-    dates.append(msg['date'])
-    if msg['text'] is dict:
-        texts.append(msg['text']['text'])
-    else:
-        texts.append(msg['text'])
-
-index = pd.to_datetime(dates)
-ts = pd.Series(texts, index=index)
-ts.index.name = 'TimeStamp'
-count = ts.resample('D').count()
-
-fig, ax = plt.subplots()
-
-def func(pct, allvals):
-    absolute = int(pct/100.*np.sum(allvals))
-    return "{:.1f}%\n({:d} messages)".format(pct, absolute)
+    ax.set_title("Mail exchange percentage")
+    ax.legend(title='Participants', loc='center left', bbox_to_anchor=(1, 0, 0.5, 1))
+    ax.set_xlabel('')
+    ax.set_ylabel('')
+    fig.savefig(os.path.join(fig_dir, chat_name, "pdf/pie_chart_{}.pdf".format(chat_name)), transparent=True)
+    fig.savefig(os.path.join(fig_dir, chat_name, "png/pie_chart_{}.png".format(chat_name)))
 
 
-wedges, texts, autotexts = ax.pie(list_n_msg, autopct=lambda pct: func(pct, list_n_msg),
-                                  textprops=dict(color="w"))
+    # Plotting counts
+    # Hourly
+    fig, ax = plt.subplots()
+    hourly_count.plot(ax=ax)
+    fig.savefig(os.path.join(fig_dir, chat_name, "pdf/hourly_count_{}.pdf".format(chat_name)), transparent=True)
+    fig.savefig(os.path.join(fig_dir, chat_name, "png/hourly_count_{}.png".format(chat_name)))
 
-ax.legend(wedges, persons,
-          title="Users",
-          loc="center left",
-          bbox_to_anchor=(1, 0, 0.5, 1))
+    # Daily
+    fig, ax = plt.subplots()
+    daily_count.plot(ax=ax)
+    fig.savefig(os.path.join(fig_dir, chat_name, "pdf/daily_count_{}.pdf".format(chat_name)), transparent=True)
+    fig.savefig(os.path.join(fig_dir, chat_name, "png/daily_count_{}.png".format(chat_name)))
 
-plt.setp(autotexts, size=8, weight="bold")
+    # Weekly
+    fig, ax = plt.subplots()
+    weekly_count.plot(ax=ax)
+    fig.savefig(os.path.join(fig_dir, chat_name, "pdf/weekly_count_{}.pdf".format(chat_name)), transparent=True)
+    fig.savefig(os.path.join(fig_dir, chat_name, "png/weekly_count_{}.png".format(chat_name)))
 
-ax.set_title("Mail exchange percentage")
-
-plt.show()
-
-ax.pie([np.round(n_msg_user/n_msg,2)*100, np.round(n_msg_contact/n_msg,2)*100])
-plt.show()
-
-fig, ax = plt.subplots()
-count.plot(ax=ax)
-plt.show()
+    # Monthly
+    fig, ax = plt.subplots()
+    monthly_count.plot(ax=ax)
+    fig.savefig(os.path.join(fig_dir, chat_name, "pdf/monthly_count_{}.pdf".format(chat_name)), transparent=True)
+    fig.savefig(os.path.join(fig_dir, chat_name, "png/monthly_count_{}.png".format(chat_name)))
