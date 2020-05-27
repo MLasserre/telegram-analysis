@@ -62,6 +62,14 @@ for chat in data['chats']['list']:
     weekly_count = df['count'].resample('W').count()
     monthly_count = df['count'].resample('M').count()
 
+    # Group by hour
+    hourly_groupby_count = df['count'].groupby(df.index.hour).count()
+    hourly_groupby_count = hourly_groupby_count.reindex(pd.Index(range(24)), fill_value=0)
+
+    # Group by weekday
+    weekday_groupby_count = df['count'].groupby(df.index.weekday).count()
+    weekday_groupby_count = weekday_groupby_count.reindex(pd.Index(range(7)), fill_value=0)
+
     if not os.path.isdir(os.path.join(fig_dir, chat_name)):
         os.mkdir(os.path.join(fig_dir, chat_name))
     if not os.path.isdir(os.path.join(fig_dir, chat_name, "pdf")):
@@ -108,3 +116,15 @@ for chat in data['chats']['list']:
     monthly_count.plot(ax=ax)
     fig.savefig(os.path.join(fig_dir, chat_name, "pdf/monthly_count_{}.pdf".format(chat_name)), transparent=True)
     fig.savefig(os.path.join(fig_dir, chat_name, "png/monthly_count_{}.png".format(chat_name)))
+
+    # Plotting groupby counts
+    # Hourly
+    fig, ax = plt.subplots()
+    hourly_groupby_count.plot(ax=ax, kind='bar')
+    fig.savefig(os.path.join(fig_dir, chat_name, "pdf/hourly_groupby_count_{}.pdf".format(chat_name)), transparent=True)
+    fig.savefig(os.path.join(fig_dir, chat_name, "png/hourly_groupby_count_{}.png".format(chat_name)))
+    # Weekday
+    fig, ax = plt.subplots()
+    weekday_groupby_count.plot(ax=ax, kind='bar')
+    fig.savefig(os.path.join(fig_dir, chat_name, "pdf/weekday_groupby_count_{}.pdf".format(chat_name)), transparent=True)
+    fig.savefig(os.path.join(fig_dir, chat_name, "png/weekday_groupby_count_{}.png".format(chat_name)))
